@@ -1,0 +1,1 @@
+"""Capa HTTP: routers y endpoints. Sin logica de negocio."""
