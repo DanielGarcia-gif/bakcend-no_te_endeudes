@@ -1,117 +1,159 @@
 """
-POST/GET/DELETE /movimientos — la bitacora.
+Tarjetas, planes a meses (MSI) y cortes.
 
-Sustituye a POST /gastos y absorbe los ingresos extraordinarios. Un movimiento
-es un hecho: si esta aqui, el dinero se movio.
+Tres routers delgados sobre el mismo servicio, porque son el mismo agregado
+visto desde tres angulos: la tarjeta es el estado de hoy, el periodo es la
+obligacion fechada y el MSI es el compromiso a futuro.
+
+La extraccion de un estado de cuenta con IA (POST /tarjetas/{id}/extraccion)
+vive en ia.py: es el unico camino de esta familia que sale a internet.
 """
 
-from typing import Annotated, Optional
-
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Response, status
 
 from app.dependencies.auth import UsuarioActual
-from app.dependencies.idempotencia import get_idempotency_key
-from app.dependencies.providers import MovimientoDep
-from app.schemas.comunes import Borrado, Coleccion
+from app.dependencies.providers import TarjetaDep
+from app.schemas.comunes import Coleccion
 from app.schemas.errores import ErrorResponse
-from app.schemas.movimientos import (
-    MovimientoCreate,
-    MovimientoResponse,
-    MovimientoResumen,
+from app.schemas.tarjetas import (
+    MSICreate,
+    MSIResumen,
+    PagoPendiente,
+    PeriodoCreate,
+    PeriodoResumen,
+    TarjetaCreate,
+    TarjetaResumen,
+    TarjetaUpdate,
 )
-
-router = APIRouter(prefix="/movimientos", tags=["movimientos"])
 
 ERRORES = {
     401: {"model": ErrorResponse, "description": "Sin token o sesion vencida"},
-    404: {"model": ErrorResponse, "description": "No existe o no es tuyo"},
+    404: {"model": ErrorResponse, "description": "No existe o no es tuya"},
     409: {"model": ErrorResponse, "description": "Conflicto de estado"},
     422: {"model": ErrorResponse, "description": "Regla de negocio o validacion"},
 }
 
 
-@router.get("", response_model=Coleccion[MovimientoResumen], responses=ERRORES)
-def listar(
-    usuario_id: UsuarioActual,
-    servicio: MovimientoDep,
-    limite: Annotated[int, Query(ge=1, le=200)] = 50,
-    cursor: Annotated[Optional[str], Query(
-        description="El `siguiente_cursor` de la respuesta anterior. Opaco.",
-    )] = None,
-    tipo: Annotated[Optional[str], Query(pattern="^(gasto|pago|ingreso)$")] = None,
-    medio: Annotated[Optional[str], Query(pattern="^(efectivo|debito|credito)$")] = None,
-    categoria: Annotated[Optional[str], Query(description="Clave del catalogo")] = None,
-    tarjeta_id: Optional[str] = None,
-    desde: Annotated[Optional[str], Query(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
-    hasta: Annotated[Optional[str], Query(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
-) -> dict:
-    """
-    Historial filtrable, paginado por cursor.
+# =====================================================================
+# TARJETAS
+# =====================================================================
 
-    Cursor y no `page`: es la unica coleccion que crece sin techo, y con OFFSET
-    la pagina 50 obliga al motor a leer y descartar 2,450 filas. Ademas, un
-    movimiento nuevo mientras el usuario pagina correria el contenido de las
-    paginas siguientes y le mostraria filas repetidas.
-    """
-    return servicio.listar(
-        usuario_id, limite=limite, cursor=cursor, tipo=tipo, medio=medio,
-        categoria=categoria, tarjeta_id=tarjeta_id, desde=desde, hasta=hasta,
-    )
+router = APIRouter(prefix="/tarjetas", tags=["tarjetas"])
 
 
-@router.post("", response_model=MovimientoResponse,
+@router.get("", response_model=Coleccion[TarjetaResumen], responses=ERRORES)
+def listar_tarjetas(usuario_id: UsuarioActual, servicio: TarjetaDep) -> dict:
+    """Todas las tarjetas del usuario, cada una con sus planes a meses vigentes."""
+    return servicio.listar(usuario_id)
+
+
+@router.post("", response_model=TarjetaResumen,
              status_code=status.HTTP_201_CREATED, responses=ERRORES)
-def registrar(
-    usuario_id: UsuarioActual,
-    datos: MovimientoCreate,
-    servicio: MovimientoDep,
-    respuesta: Response,
-    idempotency_key: Annotated[Optional[str], Depends(get_idempotency_key)] = None,
-) -> MovimientoResponse:
+def crear_tarjeta(usuario_id: UsuarioActual, datos: TarjetaCreate,
+                  servicio: TarjetaDep, respuesta: Response) -> TarjetaResumen:
     """
-    Registra un movimiento y devuelve su impacto en el score.
-
-    El efecto sobre los saldos va en la misma transaccion:
-
-        gasto   efectivo/debito   baja la liquidez
-        gasto   credito           sube el saldo de la tarjeta (la liquidez no se toca)
-        pago    efectivo/debito   baja las dos, en direcciones opuestas
-        ingreso efectivo/debito   sube la liquidez
-
-    Con `msi`, la compra y su plan a meses nacen juntos y el saldo de la tarjeta
-    sube por el TOTAL, no por la mensualidad: el banco presto el total, y la
-    utilizacion es el 20% del score.
-
-    Manda `Idempotency-Key` en los reintentos. Si esa clave ya se uso, la
-    respuesta es **200** con el movimiento existente y `repetido: true`, y el
-    saldo NO se mueve por segunda vez.
+    Alta minima: banco, nombre y tipo. Los terminos de una de credito se
+    capturan despues con `PATCH /tarjetas/{id}`; mientras falten, la tarjeta
+    sale con `requiere_terminos: true` y no entra al motor.
     """
-    resultado = servicio.registrar(usuario_id, datos, idempotency_key)
-    if resultado.repetido:
-        # 200, no 201: no se creo nada. Es la diferencia entre "ya estaba" y
-        # "acabo de crearlo", y el cliente la necesita para no descontar dos
-        # veces en su UI optimista.
-        respuesta.status_code = status.HTTP_200_OK
-    else:
-        respuesta.headers["Location"] = f"/api/v1/movimientos/{resultado.movimiento.id}"
-    return resultado
+    creada = servicio.crear(usuario_id, datos)
+    respuesta.headers["Location"] = f"/api/v1/tarjetas/{creada.id}"
+    return creada
 
 
-@router.get("/{movimiento_id}", response_model=MovimientoResumen, responses=ERRORES)
-def obtener(usuario_id: UsuarioActual, movimiento_id: str,
-            servicio: MovimientoDep) -> MovimientoResumen:
-    return servicio.obtener(usuario_id, movimiento_id)
+@router.get("/{tarjeta_id}", response_model=TarjetaResumen, responses=ERRORES)
+def obtener_tarjeta(usuario_id: UsuarioActual, tarjeta_id: str,
+                    servicio: TarjetaDep) -> TarjetaResumen:
+    return servicio.obtener(usuario_id, tarjeta_id)
 
 
-@router.delete("/{movimiento_id}", status_code=status.HTTP_204_NO_CONTENT,
+@router.patch("/{tarjeta_id}", response_model=TarjetaResumen, responses=ERRORES)
+def actualizar_tarjeta(usuario_id: UsuarioActual, tarjeta_id: str,
+                       datos: TarjetaUpdate, servicio: TarjetaDep) -> TarjetaResumen:
+    """
+    PATCH parcial de los terminos. Manda `version` para no pisar un gasto que
+    movio el saldo mientras el formulario estaba abierto: si cambio, 409.
+    """
+    return servicio.actualizar(usuario_id, tarjeta_id, datos)
+
+
+@router.delete("/{tarjeta_id}", status_code=status.HTTP_204_NO_CONTENT,
                responses=ERRORES)
-def eliminar(usuario_id: UsuarioActual, movimiento_id: str, datos: Borrado,
-             servicio: MovimientoDep) -> None:
-    """
-    Borrado logico que REVIERTE su efecto sobre los saldos.
+def eliminar_tarjeta(usuario_id: UsuarioActual, tarjeta_id: str,
+                     servicio: TarjetaDep) -> None:
+    """Borrado logico, con rastro en auditoria."""
+    servicio.eliminar(usuario_id, tarjeta_id)
 
-    La fila no se borra: queda con `eliminado_en` y `motivo_eliminacion`, y deja
-    rastro en auditoria. Un borrado que no revierte es peor que no borrar,
-    porque el dato desaparece de la vista pero el saldo sigue movido.
+
+@router.get("/{tarjeta_id}/periodos", response_model=Coleccion[PeriodoResumen],
+            responses=ERRORES)
+def listar_periodos(usuario_id: UsuarioActual, tarjeta_id: str,
+                    servicio: TarjetaDep) -> dict:
+    return servicio.listar_periodos(usuario_id, tarjeta_id)
+
+
+@router.post("/{tarjeta_id}/periodos", response_model=PeriodoResumen,
+             status_code=status.HTTP_201_CREATED, responses=ERRORES)
+def abrir_periodo(usuario_id: UsuarioActual, tarjeta_id: str, datos: PeriodoCreate,
+                  servicio: TarjetaDep) -> PeriodoResumen:
     """
-    servicio.eliminar(usuario_id, movimiento_id, datos.motivo)
+    Abre un corte con sus tres fechas reales, tal como vienen en el estado de
+    cuenta: los bancos recorren el corte por fines de semana y festivos.
+    """
+    return servicio.abrir_periodo(usuario_id, tarjeta_id, datos)
+
+
+@router.post("/{tarjeta_id}/periodos/{periodo_id}/cierre",
+             response_model=PeriodoResumen, responses=ERRORES)
+def cerrar_periodo(usuario_id: UsuarioActual, tarjeta_id: str, periodo_id: str,
+                   servicio: TarjetaDep) -> PeriodoResumen:
+    """Congela las cifras del corte. Despues de esto dejan de moverse."""
+    return servicio.cerrar_periodo(usuario_id, tarjeta_id, periodo_id)
+
+
+# =====================================================================
+# MSI
+# =====================================================================
+
+msi = APIRouter(prefix="/msi", tags=["tarjetas"])
+
+
+@msi.get("", response_model=Coleccion[MSIResumen], responses=ERRORES)
+def listar_msi(usuario_id: UsuarioActual, servicio: TarjetaDep) -> dict:
+    """Los planes a meses vigentes de todas las tarjetas."""
+    return servicio.listar_msi(usuario_id)
+
+
+@msi.post("", response_model=MSIResumen,
+          status_code=status.HTTP_201_CREATED, responses=ERRORES)
+def crear_msi(usuario_id: UsuarioActual, datos: MSICreate, servicio: TarjetaDep,
+              respuesta: Response) -> MSIResumen:
+    """
+    Un plan capturado de un estado de cuenta, sin compra en la app. Para una
+    compra NUEVA a meses se usa el bloque `msi` de POST /movimientos.
+    """
+    creado = servicio.crear_msi(usuario_id, datos)
+    respuesta.headers["Location"] = f"/api/v1/msi/{creado.id}"
+    return creado
+
+
+@msi.delete("/{msi_id}", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORES)
+def eliminar_msi(usuario_id: UsuarioActual, msi_id: str, servicio: TarjetaDep) -> None:
+    servicio.eliminar_msi(usuario_id, msi_id)
+
+
+# =====================================================================
+# PAGOS PENDIENTES
+# =====================================================================
+
+pagos_pendientes = APIRouter(tags=["tarjetas"])
+
+
+@pagos_pendientes.get("/pagos-pendientes", response_model=Coleccion[PagoPendiente],
+                      responses=ERRORES)
+def listar_pagos_pendientes(usuario_id: UsuarioActual, servicio: TarjetaDep) -> dict:
+    """
+    El consejo accionable: paga `falta_para_no_intereses` antes de
+    `fecha_limite_pago` y la tasa no corre.
+    """
+    return servicio.pagos_pendientes(usuario_id)

@@ -1,7 +1,7 @@
 """
 Siembra el usuario demo.
 
-    python -m scripts.seed_demo
+    python -m app.scripts.seed_demo
 
 NO ES DATOS DE PRUEBA: ES EL GUION DEL PITCH. Cada cifra esta calibrada para
 que el demo cuente una historia concreta:

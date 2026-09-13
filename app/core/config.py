@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     #
     # La base YA EXISTE. La app no ejecuta DDL al arrancar (eso era de la epoca
     # de SQLite y CREATE TABLE IF NOT EXISTS); el esquema se aplica una vez con
-    # `python -m scripts.aplicar_esquema`.
+    # `python -m app.scripts.aplicar_esquema`.
     db_host: str = "localhost"
     db_port: int = 3306
     db_user: str = "root"

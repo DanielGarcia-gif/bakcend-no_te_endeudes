@@ -1,9 +1,9 @@
 """
 Aplica Esquema.sql contra MySQL.
 
-    python -m scripts.aplicar_esquema                  # base de config (.env)
-    python -m scripts.aplicar_esquema --base X_test    # otra base (tests)
-    python -m scripts.aplicar_esquema --recrear        # DROP DATABASE primero
+    python -m app.scripts.aplicar_esquema                  # base de config (.env)
+    python -m app.scripts.aplicar_esquema --base X_test    # otra base (tests)
+    python -m app.scripts.aplicar_esquema --recrear        # DROP DATABASE primero
 
 Existe porque el DDL dejo de vivir en Python. Antes el esquema era una
 constante en app/models/esquema.py que se ejecutaba con cx.executescript() al

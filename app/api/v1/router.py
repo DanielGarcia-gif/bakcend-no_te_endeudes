@@ -28,8 +28,8 @@ router.include_router(declarativas.pendientes)
 
 # --- tarjetas, planes a meses y cortes ---
 router.include_router(tarjetas.router)
-# router.include_router(tarjetas.msi)
-# router.include_router(tarjetas.pagos_pendientes)
+router.include_router(tarjetas.msi)
+router.include_router(tarjetas.pagos_pendientes)
 
 # POST /tarjetas/{id}/extraccion. Va con las tarjetas aunque viva en ia.py:
 # lo que cuelga de la ruta es la tarjeta, no la IA.

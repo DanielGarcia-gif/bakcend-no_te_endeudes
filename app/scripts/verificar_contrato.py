@@ -1,7 +1,7 @@
 """
 Comprueba que contrato/tipos.ts sigue siendo espejo del OpenAPI real.
 
-    python -m scripts.verificar_contrato
+    python -m app.scripts.verificar_contrato
 
 El problema que resuelve: `tipos.ts` es una copia a mano del contrato, y una
 copia a mano diverge. No con un cambio grande —eso se nota— sino con un campo

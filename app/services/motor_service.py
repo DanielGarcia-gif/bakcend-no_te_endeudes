@@ -6,7 +6,7 @@ quien le trae el `estado` desde el repositorio y le pide el calculo:
 
     Router -> Service -> MotorService -> [motor puro]
                               |
-                              +-------> EstadoRepository -> SQLite
+                              +-------> EstadoRepository -> MySQL
 
 Nadie mas importa app.domain.motor. Si algun servicio necesita un calculo
 nuevo, se agrega un metodo aqui: asi el motor sigue siendo sustituible y
@@ -89,22 +89,41 @@ class MotorService:
 
     # --- simulador (solo lectura) -------------------------------------------
 
-    def simular(self, usuario_id: int, monto: float, plazos: list[int]) -> dict:
+    def simular(self, usuario_id: int, monto: float, plazos: list[int],
+                opciones: list[dict] | None = None,
+                incluir_contado: bool = True) -> dict:
         """
         La pantalla estrella. `plazos` son los meses sin intereses que ofrece
         EL COMERCIO, no la tarjeta: por eso llegan en el request y no de la base.
+
+        `opciones` es la forma nueva (cada tarjeta con SUS plazos) y cuando
+        viene manda sobre `plazos`. El veredicto se calcula aqui, sobre la
+        recomendada, para que la advertencia exista aunque Gemini este caido.
         """
         estado = self.estado_de(usuario_id)
-        escenarios = motor.simular_compra(estado, monto, plazos)
+        escenarios = motor.simular_compra(
+            estado, monto, plazos, opciones=opciones, incluir_contado=incluir_contado
+        )
         viables = [e for e in escenarios if e["viable"]]
+        # simular_compra ya ordena: viables primero, mejor score arriba,
+        # desempate por holgura restante. El primero es la recomendacion.
+        recomendado = viables[0] if viables else None
+        juicio = motor.evaluar_compra(estado, monto, recomendado)
+
+        if opciones is None:
+            ofrecidos = sorted(set(plazos))
+        else:
+            ofrecidos = sorted({p for o in opciones for p in (o.get("plazos") or [])})
+
         return {
             "monto": monto,
-            "plazos_ofrecidos": plazos,
+            "plazos_ofrecidos": ofrecidos,
             "score_actual": motor.calcular_score(estado)["score"],
-            # simular_compra ya ordena: viables primero, mejor score arriba,
-            # desempate por holgura restante. El primero es la recomendacion.
-            "recomendado": viables[0] if viables else None,
+            "recomendado": recomendado,
             "escenarios": escenarios,
+            "veredicto": juicio["veredicto"],
+            "razones_veredicto": juicio["razones"],
+            "metricas": juicio["metricas"],
         }
 
     # --- priorizacion de deuda ----------------------------------------------

@@ -7,7 +7,7 @@ los DTOs de entrada y salida HTTP.
 
 El DDL ya no vive aqui. Antes este paquete exportaba una constante ESQUEMA que
 core/database.py ejecutaba al arrancar con executescript(); ahora la fuente de
-verdad es Esquema.sql y se aplica con `python -m scripts.aplicar_esquema`. Un
+verdad es Esquema.sql y se aplica con `python -m app.scripts.aplicar_esquema`. Un
 esquema que se crea como efecto secundario del import esta bien para SQLite en
 un archivo local, y esta mal para una base de servidor.
 

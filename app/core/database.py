@@ -141,7 +141,7 @@ def verificar_conexion() -> dict:
         if migracion is None:
             raise RuntimeError(
                 f"La base '{settings.db_name}' no tiene migraciones aplicadas. "
-                "Ejecutar: python -m scripts.aplicar_esquema"
+                "Ejecutar: python -m app.scripts.aplicar_esquema"
             )
         return {
             "mysql": ".".join(map(str, version)),
