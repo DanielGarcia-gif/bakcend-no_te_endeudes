@@ -6,15 +6,23 @@ archivo .env. Ningun otro modulo debe leer os.environ directamente.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
+# La raiz del proyecto, calculada desde este archivo (app/core/config.py). Con
+# un env_file relativo, pydantic-settings busca el .env en el directorio desde
+# donde se arranco el proceso: lanzar uvicorn desde otra carpeta (o desde un
+# IDE) lo dejaba sin leer, SIN AVISAR, y la app caia a los defaults de abajo.
+RAIZ = Path(__file__).resolve().parents[2]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=RAIZ / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -36,7 +44,7 @@ class Settings(BaseSettings):
     db_port: int = 3306
     db_user: str = "root"
     db_password: str = ""
-    db_name: str = "no_te_endudes"
+    db_name: str = "no_te_endeudes"
     db_pool_size: int = 5
 
     # --- HTTP ---

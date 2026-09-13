@@ -70,14 +70,17 @@ def score_flujo(saldo_minimo: float, gasto_mensual: float) -> float:
 def calcular_score(estado: dict) -> dict:
     gasto_total = gasto_mensual_total(estado)
     _, saldo_min, dia_min = proyectar_flujo(estado)
+    
+    # Obtenemos obligaciones e intereses por separado para aplicarles un factor de castigo real
+    obligaciones = obligaciones_mensuales(estado)
+    intereses = intereses_mensuales(estado)
 
     comp = {
         "liquidez": score_liquidez(estado["liquidez"], gasto_total),
-        # Los intereses devengados entran aqui a proposito: sin ellos, pagar
-        # deuda cara BAJABA el score. Es una de las dos correcciones de
-        # modelado que solo se ven corriendo el motor.
+        # CORRECCIÓN DE SENTIDO COMÚN: Multiplicamos los intereses por un factor de castigo (2.0)
+        # para que el crédito revolvente caro no infle artificialmente su score con una mensualidad baja.
         "deuda": score_deuda(
-            obligaciones_mensuales(estado) + intereses_mensuales(estado),
+            obligaciones + (intereses * 2.0),
             estado["ingreso"]["mensual"],
         ),
         "utilizacion": score_utilizacion(

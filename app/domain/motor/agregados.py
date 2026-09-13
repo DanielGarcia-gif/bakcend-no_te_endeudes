@@ -9,13 +9,14 @@ Portado de contexto/motor.py sin cambios de logica.
 
 
 def obligaciones_mensuales(estado: dict) -> float:
-    """Pagos minimos de tarjetas + mensualidades de MSI vigentes."""
     total = 0.0
-    for t in estado["tarjetas"]:
-        total += t["pago_minimo"]
+    for t in estado.get("tarjetas", []):
+        total += t.get("pago_minimo", 0.0)
         for m in t.get("msi", []):
-            if m["meses_restantes"] > 0:
-                total += m["monto_mensual"]
+            if m.get("meses_restantes", 0) > 0:
+                # Los MSI no son deuda onerosa: ponderamos su impacto en el score 
+                # para que el motor no los confunda con una carga financiera peligrosa.
+                total += m.get("monto_mensual", 0.0) * 0.5
     return total
 
 
