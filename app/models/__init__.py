@@ -12,7 +12,7 @@ esquema que se crea como efecto secundario del import esta bien para SQLite en
 un archivo local, y esta mal para una base de servidor.
 
 Ademas, cada desde_fila() es la frontera de tipos con MySQL: convierte DECIMAL
-a float y DATE/DATETIME a str ISO. Ver app/core/conversion.py.
+a float y DATE/DATETIME a str ISO. Ver app/core/conversion.py. si
 """
 
 from app.models.categoria import Categoria
@@ -22,6 +22,8 @@ from app.models.periodo import PeriodoTarjeta
 from app.models.recurrente import Recurrente
 from app.models.tarjeta import MSIVigente, Tarjeta
 from app.models.usuario import Usuario
+
+
 
 __all__ = [
     "Usuario",
