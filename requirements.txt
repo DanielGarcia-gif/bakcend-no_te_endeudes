@@ -1,0 +1,51 @@
+# Financial Decision Simulator — dependencias del backend
+# Instalar con: pip install -r requirements.txt
+
+# --- API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.13.5
+pydantic-settings==2.7.0
+email-validator==2.2.0        # requerido por EmailStr en los schemas de auth
+python-multipart==0.0.20      # exigido por UploadFile: el PDF del estado de cuenta
+
+# --- IA ---
+# SDK oficial de Google. Arrastra pydantic>=2.11, y por eso el pin de arriba
+# subio de 2.10.4 a 2.13.5.
+google-genai==2.22.0
+
+# --- base de datos ---
+# MySQL 8.0.16+ (los CHECK del esquema se ignoran en silencio antes de esa
+# version). Driver puro Python, sin ORM: el SQL vive en app/repositories/ y se
+# lee tal cual, que es lo que permite auditarlo linea por linea.
+PyMySQL==1.1.1
+cryptography==44.0.0          # exigido por caching_sha2_password (auth default de MySQL 8)
+DBUtils==3.1.0                # pool de conexiones; sin el, un handshake TCP por request
+
+# --- seguridad ---
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+PyJWT==2.10.1
+
+# --- configuracion ---
+python-dotenv==1.0.1
+
+# --- pruebas ---
+pytest==8.3.4
+httpx==0.28.1                 # lo usa TestClient de FastAPI
+
+# El backend usa el SDK de Google, no un POST a mano. La primera version de
+# app/core/gemini.py eran ~40 lineas de urllib.request, con el argumento de que
+# un SDK de 30 MB para hacer un POST con un JSON no se paga. Lo que paga el SDK
+# no es el transporte: es `response_schema`. El esquema deja de ser texto dentro
+# del prompt -una promesa que el modelo podia romper y que solo se descubria al
+# parsear- y pasa a ser una garantia del servicio, lo que borro el parseo
+# defensivo entero.
+#
+# La llamada a Gemini se mudo del frontend a aqui: alli la API key viajaba en
+# el bundle de Vite y era publicamente extraible. Gemini sigue sin calcular
+# nada: extrae y redacta; los numeros salen del motor determinista.
+#
+# Sin ORM y sin herramienta de migraciones: el DDL vive en Esquema.sql y se
+# aplica con `python -m scripts.aplicar_esquema`. La base ya existe en el
+# servidor; la app no la crea al arrancar
