@@ -1,0 +1,1 @@
+"""Scripts operativos. No forman parte de la aplicacion en ejecucion."""
